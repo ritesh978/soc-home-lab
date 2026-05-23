@@ -1,0 +1,173 @@
+# Wazuh Detection Queries
+
+Searches used during investigation of brute-force and PowerShell activity on winlab-001 (192.168.56.108).
+
+---
+
+## By Wazuh Rule ID (most direct — matches what actually fired)
+
+### Logon failures (brute-force)
+```
+rule.id: 60122
+```
+"Logon failure - Unknown user or bad password" — Level 5. This is the rule that
+fired for every failed RDP attempt in this investigation.
+
+### Multiple logon failures threshold
+```
+rule.id: 60204
+```
+"Multiple Windows logon failures" — Level 10. Fires when repeated 60122 events
+are detected from the same source. High severity brute-force indicator.
+
+### PowerShell file creation in Windows root
+```
+rule.id: 92205
+```
+"PowerShell process created an executable file in Windows root folder" — Level 9.
+Tactic: Command and Control. Fired when powershell.exe created a .ps1 script
+in C:\Windows\SystemTemp.
+
+---
+
+## By Windows Event ID
+
+### Failed logins
+```
+event.code: 4625
+```
+Raw Windows failed logon event. Wazuh maps this to Rule 60122.
+
+### Successful login after failures
+```
+event.code: 4624
+```
+Cross-reference with 4625/60122 events to confirm authentication after brute-force.
+
+### RDP logon type filter
+```
+event.code: 4625 AND data.win.eventdata.logonType: 10
+```
+Logon type 10 = RemoteInteractive (RDP). Filters out noise from local failed logins.
+
+---
+
+## By Process / Sysmon
+
+### PowerShell execution (Sysmon Event ID 1)
+```
+event.code: 1 AND data.win.eventdata.image: *powershell.exe*
+```
+Catches every PowerShell process creation logged by Sysmon.
+
+### Encoded PowerShell detection
+```
+data.win.eventdata.commandLine: *-enc*
+```
+Flags the -enc (EncodedCommand) flag — common evasion technique.
+
+### Full PowerShell path observed in this lab
+```
+data.win.eventdata.image: *SysWOW64*powershell.exe*
+```
+Specifically targets 32-bit PowerShell (SysWOW64) — used in this investigation.
+
+### SecEdit.exe execution
+```
+data.win.eventdata.image: *SecEdit.exe*
+```
+SecEdit.exe observed running under SYSTEM from ossec-agent directory —
+suspicious outside normal admin context.
+
+### Discovery commands
+```
+data.win.eventdata.image: (*whoami* OR *net.exe* OR *systeminfo*)
+```
+Detects post-compromise reconnaissance tools executed as processes.
+
+### File creation by PowerShell (Sysmon Event ID 11)
+```
+event.code: 11 AND data.win.eventdata.image: *powershell.exe*
+```
+Catches files created by PowerShell — matched the .ps1 drop in SystemTemp.
+
+### Registry modifications (Sysmon Event ID 13)
+```
+event.code: 13
+```
+Registry value set events — visible in Sysmon logs during this investigation.
+
+### DNS queries (Sysmon Event ID 22)
+```
+event.code: 22
+```
+DNS queries logged by Sysmon — useful for detecting C2 beaconing.
+
+### Network connections from PowerShell (Sysmon Event ID 3)
+```
+event.code: 3 AND data.win.eventdata.image: *powershell.exe*
+```
+Catches PowerShell making outbound connections — potential C2 activity.
+
+---
+
+## By Agent / Host
+
+### Filter all events to this specific agent
+```
+agent.name: winlab-001
+```
+
+### Filter by victim IP
+```
+agent.ip: 192.168.56.108
+```
+
+### Filter by Sysmon channel only
+```
+data.win.system.channel: Microsoft-Windows-Sysmon/Operational
+```
+
+---
+
+## By MITRE Technique
+
+### T1078 — Valid Accounts
+```
+rule.mitre.id: T1078
+```
+
+### T1105 — Ingress Tool Transfer
+```
+rule.mitre.id: T1105
+```
+
+### T1110 — Brute Force
+```
+rule.mitre.id: T1110
+```
+
+---
+
+## Key Reference Tables
+
+### Wazuh Rule IDs observed in this lab
+
+| Rule ID | Description | Level |
+|---------|-------------|-------|
+| 60122 | Logon failure - Unknown user or bad password | 5 |
+| 60204 | Multiple Windows logon failures | 10 |
+| 92205 | PowerShell created executable in Windows root | 9 |
+
+### Windows Event IDs reference
+
+| Event ID | Meaning |
+|----------|---------|
+| 4625 | Failed logon |
+| 4624 | Successful logon |
+| 4648 | Logon using explicit credentials |
+| 1 | Sysmon — process creation |
+| 3 | Sysmon — network connection |
+| 11 | Sysmon — file creation |
+| 13 | Sysmon — registry modification |
+| 22 | Sysmon — DNS query |

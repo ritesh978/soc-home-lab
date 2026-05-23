@@ -1,0 +1,96 @@
+# Indicators of Compromise (IOCs)
+
+Collected during SOC homelab investigation — brute-force + PowerShell execution scenario.
+Host: DESKTOP-MOSHGPL | Agent: winlab-001 | Date: 20-05-2026
+
+---
+
+## Network IOCs
+
+| Type | Value | Notes |
+|------|-------|-------|
+| Attacker IP | 192.168.56.109 | Kali Linux VM |
+| Victim IP | 192.168.56.108 | Windows 10 VM — winlab-001 |
+
+---
+
+## Host IOCs
+
+| Type | Value |
+|------|-------|
+| Hostname | DESKTOP-MOSHGPL |
+| Agent name | winlab-001 |
+| Agent ID | 002 |
+| OS | Microsoft Windows 10 |
+
+---
+
+## Process IOCs
+
+| Process | Full Path | Why Suspicious |
+|---------|-----------|----------------|
+| powershell.exe | C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe | Launched with -enc flag, created .ps1 file |
+| SecEdit.exe | C:\Windows\SysWOW64\SecEdit.exe | Ran under SYSTEM from ossec-agent dir, exported security config |
+| net.exe | C:\Windows\System32\net.exe | Used for account discovery (net user) |
+| whoami.exe | C:\Windows\System32\whoami.exe | Executed post-login for user enumeration |
+| cmd.exe | C:\Windows\System32\cmd.exe | Spawned during discovery phase |
+
+---
+
+## File IOCs
+
+| File | Path | Notes |
+|------|------|-------|
+| PSScriptPolicyTest .ps1 | C:\Windows\SystemTemp\__PSScriptPolicyTest_tbxthy5y.kib.ps1 | Created by powershell.exe — Rule 92205 |
+| secexport.cfg | C:\Windows\TEMP\secexport.cfg | Security config exported by SecEdit.exe |
+
+---
+
+## Command IOCs
+
+| Command | MITRE Technique | Notes |
+|---------|----------------|-------|
+| powershell -enc SQBFAFgA | [T1059](https://attack.mitre.org/techniques/T1059/) | Encoded PowerShell — evasion attempt |
+| SecEdit.exe /export /cfg C:\Windows\TEMP\secexport.cfg | [T1082](https://attack.mitre.org/techniques/T1082/) | Security config export |
+| net user | [T1087](https://attack.mitre.org/techniques/T1087/) | Account discovery |
+| whoami | [T1087](https://attack.mitre.org/techniques/T1087/) | Account discovery |
+| systeminfo | [T1082](https://attack.mitre.org/techniques/T1082/) | System info discovery |
+| ipconfig /all | [T1082](https://attack.mitre.org/techniques/T1082/) | Network config discovery |
+
+---
+
+## Wazuh Rule IOCs
+
+| Rule ID | Description | Level | Technique |
+|---------|-------------|-------|-----------|
+| 60122 | Logon failure - Unknown user or bad password | 5 | T1078, T1531 |
+| 60204 | Multiple Windows logon failures | 10 | T1110 |
+| 92205 | PowerShell created executable in Windows root | 9 | T1105 |
+
+---
+
+## MITRE Techniques Observed
+
+| ID | Name | Evidence |
+|----|------|---------|
+| [T1110](https://attack.mitre.org/techniques/T1110/) | Brute Force | Rule 60204 — repeated RDP failures |
+| [T1078](https://attack.mitre.org/techniques/T1078/) | Valid Accounts | Rule 60122 — logon failures + success |
+| [T1531](https://attack.mitre.org/techniques/T1531/) | Account Manipulation | Rule 60122 tactic: Impact |
+| [T1059](https://attack.mitre.org/techniques/T1059/) | PowerShell | Encoded -enc command observed |
+| [T1105](https://attack.mitre.org/techniques/T1105/) | Ingress Tool Transfer | Rule 92205 — .ps1 drop in SystemTemp |
+| [T1087](https://attack.mitre.org/techniques/T1087/) | Account Discovery | whoami, net user executed |
+| [T1082](https://attack.mitre.org/techniques/T1082/) | System Info Discovery | systeminfo, ipconfig, SecEdit export |
+
+---
+
+## Windows Event IDs Triggered
+
+| Event ID | Meaning | Triggered By |
+|----------|---------|--------------|
+| 4625 | Failed logon | RDP brute-force attempts |
+| 4624 | Successful logon | Successful RDP authentication |
+| 1 | Sysmon process creation | PowerShell, SecEdit.exe, discovery commands |
+| 3 | Sysmon network connection | RDP connection attempts |
+| 11 | Sysmon file creation | .ps1 script created by powershell.exe |
+| 13 | Sysmon registry modification | Observed during post-compromise activity |
+| 22 | Sysmon DNS query | DNS activity during session |
